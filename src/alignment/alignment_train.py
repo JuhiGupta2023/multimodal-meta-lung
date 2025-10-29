@@ -411,15 +411,74 @@ def main():
 
 import argparse
 # ...
+# --- CLI wrapper (robust) ---
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--data-root", type=str, default=None, help="path to dataset root (optional)")
-    parser.add_argument("--epochs", type=int, default=10)
+    import argparse, inspect, sys
+
+    parser = argparse.ArgumentParser(description="Alignment training (smoke-friendly args)")
+    parser.add_argument("--data-root", type=str, default=None,
+                        help="Override dataset root (optional). If not used, script's ROOT variable remains.")
+    parser.add_argument("--epochs", type=int, default=None,
+                        help="Override number of epochs for quick smoke runs (optional).")
+    parser.add_argument("--device", type=str, default=None, help="Optional device override (cuda/cpu)")
     args = parser.parse_args()
 
+    # Attempt to override module-level variables if present
     if args.data_root is not None:
-        ROOT = args.data_root   # override dataset root variable used in the script
-    epochs = args.epochs
+        # set module-global ROOT used by the script
+        globals()["ROOT"] = args.data_root
+        print(f"[CLI] Overriding ROOT -> {args.data_root}")
 
-    main(epochs=epochs)  # adapt your main() to accept epochs or set global
+    if args.device is not None:
+        globals()["DEVICE_OVERRIDE"] = args.device
+        print(f"[CLI] DEVICE override -> {args.device}")
 
+    # If main() exists, call it flexibly; else try common entry point names
+    entry = None
+    try:
+        entry = main
+    except NameError:
+        # try alternative names
+        for cand in ("run", "train", "train_alignment"):
+            if cand in globals():
+                entry = globals()[cand]
+                break
+
+    if entry is None:
+        print("[ERR] No top-level main/train function found in script. Please define main() or train().", file=sys.stderr)
+        sys.exit(2)
+
+    # Inspect signature to call correctly
+    sig = inspect.signature(entry)
+    call_kwargs = {}
+    if "epochs" in sig.parameters and args.epochs is not None:
+        call_kwargs["epochs"] = args.epochs
+    if "data_root" in sig.parameters and args.data_root is not None:
+        call_kwargs["data_root"] = args.data_root
+    if "device" in sig.parameters and args.device is not None:
+        call_kwargs["device"] = args.device
+
+    try:
+        if call_kwargs:
+            print(f"[CLI] Calling {entry.__name__} with {call_kwargs}")
+            entry(**call_kwargs)
+        else:
+            # if function expects nothing, but user supplied epochs: set globals so script can use them
+            if args.epochs is not None:
+                globals()["epochs"] = args.epochs
+                print(f"[CLI] Set global 'epochs' = {args.epochs}")
+            entry()
+    except TypeError as e:
+        # Last-resort attempt: set globals and call
+        print(f"[WARN] direct call failed ({e}). Trying fallback: set globals and call without args.")
+        if args.epochs is not None:
+            globals()["epochs"] = args.epochs
+            print(f"[CLI] (fallback) Set global 'epochs' = {args.epochs}")
+        if args.data_root is not None:
+            globals()["ROOT"] = args.data_root
+            print(f"[CLI] (fallback) Set global 'ROOT' = {args.data_root}")
+        try:
+            entry()
+        except Exception as e2:
+            print(f"[ERR] fallback call also failed: {e2}", file=sys.stderr)
+            raise
