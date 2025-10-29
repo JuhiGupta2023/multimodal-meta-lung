@@ -261,13 +261,29 @@ def info_nce(z2d, z3d, temp=0.2):
 
 # ------------------------ main training script ------------------------
 def parse_args():
-    p = argparse.ArgumentParser()
-    p.add_argument("--cfg", type=str, default="configs/alignment_config.yaml")
-    p.add_argument("--data_root", type=str, default=None)
-    p.add_argument("--out", type=str, default=None)
-    p.add_argument("--workers", type=int, default=4)
-    p.add_argument("--seed", type=int, default=42)
-    return p.parse_args()
+    """
+    Robust argument parsing:
+     - accept both '--data-root' and '--data_root' styles (same dest)
+     - accept '--out' and '--out-path'
+     - tolerate unknown args (parse_known_args) so CI / wrapper flags don't break the script
+    """
+    p = argparse.ArgumentParser(add_help=True)
+    p.add_argument("--cfg", type=str, default="configs/alignment_config.yaml",
+                   help="Path to YAML config (optional).")
+    # accept both hyphen and underscore variants (maps to dest 'data_root')
+    p.add_argument("--data-root", "--data_root", dest="data_root", type=str, default=None,
+                   help="Override dataset root (optional).")
+    p.add_argument("--out", "--out-path", dest="out", type=str, default=None,
+                   help="Path to final aligned checkpoint output.")
+    p.add_argument("--workers", type=int, default=4, help="DataLoader workers.")
+    p.add_argument("--seed", type=int, default=42, help="Random seed.")
+    # Use parse_known_args so unknown wrapper args (e.g., --epochs named by CI wrapper) don't cause error.
+    args, unknown = p.parse_known_args()
+    if unknown:
+        # helpful debug print for CI logs
+        print(f"[parse_args] Warning: ignoring unknown CLI args: {unknown}")
+    return args
+
 
 def load_cfg(path):
     if not os.path.exists(path): return {}
