@@ -1,5 +1,12 @@
-epochs: 200
-batch_size: 16
-optimizer: AdamW
-learning_rate: 1e-3
-loss: InfoNCE
+data_root: "C:/Users/juhi/Desktop/2ndTechnical/dataset"
+bmp_dir: "BMP_2D/BMP_2D/Image"
+ann_dir: "BMP_2D/BMP_2D/Annotations"
+mhd_dir: "MHD_3D/MHD_3D"
+ssl_backbone: ""     # set to path if available
+epochs: 10
+batch_size: 6
+lr: 1e-3
+proj_dim: 128
+depth: 64
+freeze_2d: true
+temp: 0.2
