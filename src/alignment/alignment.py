@@ -24,6 +24,8 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torchvision import models, transforms
 
+ROOT = os.environ.get("DATA_ROOT", r"C:\Users\juhi\Desktop\2ndTechnical\dataset")
+
 # ------------------- DEFAULT PATHS (can be overridden by cfg / CLI) -------------------
 ROOT_DEFAULT = r"C:\Users\juhi\Desktop\2ndTechnical\dataset"
 BMP2D_IMG_DIR_DEFAULT = os.path.join(ROOT_DEFAULT, "BMP_2D", "BMP_2D", "Image")
