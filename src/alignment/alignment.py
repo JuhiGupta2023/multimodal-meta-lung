@@ -409,5 +409,17 @@ def main():
     }, out_path)
     print("✅ Training complete. Final aligned encoders saved to:", out_path)
 
+import argparse
+# ...
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data-root", type=str, default=None, help="path to dataset root (optional)")
+    parser.add_argument("--epochs", type=int, default=10)
+    args = parser.parse_args()
+
+    if args.data_root is not None:
+        ROOT = args.data_root   # override dataset root variable used in the script
+    epochs = args.epochs
+
+    main(epochs=epochs)  # adapt your main() to accept epochs or set global
+

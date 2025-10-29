@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# create toy data
-python sample_data/generate_sample_data.py --out ./sample_data/toy_dataset --n_patients 3 --slices_per_patient 2
+echo "[INFO] Running smoke script"
 
-# ensure alignment script points to toy dataset via env or edit ROOT at top of file
-# We prefer env override inside script: alignment_train.py should read ROOT from env var if present.
-export DATA_ROOT=./sample_data/toy_dataset
-python src/alignment/alignment_train.py
+REPO_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+echo "[INFO] Repo root: $REPO_ROOT"
+
+# 1) generate toy data (your script path)
+python "${REPO_ROOT}/sample_data/generate_sample_data.py" || { echo "toy data gen failed"; exit 1; }
+
+# 2) run one-epoch alignment (use src path)
+PY=${PY:-python}
+echo "[INFO] Running alignment train (1 epoch smoke) at: ${REPO_ROOT}/src/alignment/alignment_train.py"
+# pass a flag so alignment_train.py does 1 epoch and uses sample_data paths
+$PY "${REPO_ROOT}/src/alignment/alignment_train.py" --data-root "${REPO_ROOT}/sample_data/toy_dataset" --epochs 1 || { echo "alignment failed"; exit 1; }
+
+echo "[INFO] Smoke script finished"
