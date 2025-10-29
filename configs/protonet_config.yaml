@@ -1,0 +1,7 @@
+episodes: 200
+way: 2
+shot: 5
+query: 15
+optimizer: AdamW
+learning_rate: 1e-4
+metric: euclidean
