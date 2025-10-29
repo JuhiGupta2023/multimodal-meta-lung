@@ -1,10 +1,13 @@
-torch
+torch>=1.13
 torchvision
 numpy
+opencv-python
+SimpleITK
 pandas
 matplotlib
+pyyaml
 scikit-learn
 tqdm
 umap-learn
 pytorch-grad-cam
-simpleitk
+
