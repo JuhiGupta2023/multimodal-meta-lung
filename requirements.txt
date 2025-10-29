@@ -1,5 +1,4 @@
-torch>=1.13
-torchvision
+
 numpy
 opencv-python
 SimpleITK

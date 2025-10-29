@@ -20,10 +20,20 @@ jobs:
       with:
         python-version: "3.10"
 
-    - name: Install pip packages
+    - name: Install pip packages (torch first, then rest)
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+         python -m pip install --upgrade pip setuptools wheel
+
+          # Install PyTorch CPU wheel (recommended for CI to avoid CUDA complexity)
+          # This chooses the CPU builds; change to GPU-able wheel only if you need CUDA and know runner/cuda version.
+         pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio
+
+          # Install grad-cam package (PyPI package name is "grad-cam")
+         pip install grad-cam
+
+          # Now install the rest of your requirements excluding torch & grad-cam
+          # (Make sure requirements.txt does NOT include torch, torchvision, torchaudio, or grad-cam)
+         pip install -r requirements.txt
 
     - name: Run smoke script (toy data + 1-epoch alignment)
       run: |
