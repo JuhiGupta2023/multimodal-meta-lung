@@ -1,88 +1,39 @@
-# \# Multimodal Meta-Learning for Few-Shot Lung Nodule Classification
+# Multimodal Meta-Learning for Few-Shot Lung Nodule Classification
 
-# 
+**Repo:** `multimodal-meta-lung`  
+**Author / Contact:** Juhi Gupta — (add email)  
+**Status:** Code + toy-data for reproducibility. Full dataset used in experiments is not included (private / restricted). See *Dataset* below for instructions.
 
-# This repository provides the official implementation of the paper  
+---
 
-# \*\*“Multimodal Meta-Learning and Calibration for Few-Shot Lung Nodule Classification.”\*\*
+## TL;DR
+This repository contains code to reproduce the experiments in *Multimodal Meta-Learning for Few-Shot Lung Nodule Classification* (alignment pretraining of 2D & 3D encoders, Prototypical network few-shot training, calibration and interpretability analyses). The project is organized so reviewers can run a quick smoke test using the provided toy data and run full experiments locally when the dataset is available.
 
-# 
+---
 
-# It integrates \*\*cross-modal representation alignment\*\* between 2D and 3D CT data with \*\*Prototypical Meta-Learning\*\*,  
-
-# followed by \*\*calibration-based trustworthiness analysis\*\*.  
-
-# The framework is reproducible and modular for research and educational use.
-
-# 
-
-# ---
-
-# 
-
-# \## 📘 Repository Overview
-
-# 
-
-# multimodal-meta-lung/
-
-# │
-
-# ├── src/
-
-# │ ├── alignment/ # 2D–3D alignment training (contrastive InfoNCE)
-
-# │ ├── protonet/ # Few-shot Prototypical Network training
-
-# │ └── utils/ # Metrics, visualization, etc.
-
-# │
-
-# ├── configs/
-
-# │ ├── alignment\_config.yaml # Config for cross-modal alignment
-
-# │ └── protonet\_config.yaml # Config for meta-learning
-
-# │
-
-# ├── notebooks/
-
-# │ ├── Alignment\_training.ipynb
-
-# │ └── Protonet\_training.ipynb
-
-# │
-
-# ├── sample\_data/ # Tiny placeholder data (no PHI)
-
-# │ └── README\_DATA.md
-
-# │
-
-# ├── requirements.txt
-
-# ├── LICENSE
-
-# ├── .gitignore
-
-# └── README.md
+## Repo structure
+├── .github/workflows/ # CI smoke workflow (toy-data)
+├── checkpoints/ # saved checkpoints (alignment, protonet)
+├── configs/ # yaml configs for alignment/protonet
+├── sample_data/ # toy dataset used by CI and smoke runs
+├── src/
+│ ├── alignment/ # alignment pretraining script
+│ │ └── alignment_train.py
+│ ├── protonet/ # prototypical meta-learning training
+│ │ └── protonet_train.py
+│ ├── utils/ # helper modules (data/models/loss/metrics/io)
+│ ├── eval/ # evaluation & embedding export
+│ └── infer/ # simple inference utility
+├── run_smoke.sh # convenience script that runs toy-data tests
+├── requirements.txt
+└── README.md
 
 
+---
 
-\## ⚙️ Environment Setup
-
-
-
-\### 1️⃣ Using Conda
-
-```bash
-
-conda create -n meta-lung python=3.10
-
-conda activate meta-lung
-
-pip install -r requirements.txt
+## Dataset (what you need to run full experiments)
+**Note:**The original dataset is "Lung Nodule Dataset with Histopathology-based Cancer Type Annotation" by Jian et al., which provides computed tomography (CT) scans of biopsy-confirmed lung nodules together with histopathology-derived subtype labels. The repo contains a `sample_data/` toy generator for CI and smoke runs. This dataset can be downloaded from the following GitHub repository: 
+https://github.com/chycxyzd/LDFC.
 
 
 
