@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><filename>0002_17.bmp</filename><size><width>128</width><height>128</height><depth>1</depth></size><object><name>nodule</name><bndbox><xmin>10</xmin><ymin>91</ymin><xmax>34</xmax><ymax>115</ymax></bndbox></object></annotation>

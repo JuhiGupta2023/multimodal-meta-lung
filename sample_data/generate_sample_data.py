@@ -1,188 +1,138 @@
 #!/usr/bin/env python3
 """
-generate_toy_data.py
+Synthetic "realistic-ish" toy dataset generator for smoke tests.
 
-Create a tiny synthetic dataset compatible with the alignment/protonet scripts.
-
-Produces the following structure under --out (default ./toy_dataset):
-
-toy_dataset/
-  BMP_2D/
-    BMP_2D/
-      Image/
-        0001_30.bmp
-        ...
-      Annotations/
-        0001_30.xml
-        ...
-    ImageSets/
-      train.txt
-  MHD_3D/
-    MHD_3D/
-      1.mhd  (and 1.raw)
-      ...
-  all_anno_3D.csv
+Creates:
+  ./sample_data/toy_dataset/
+    BMP_2D/BMP_2D/Image/*.bmp
+    BMP_2D/BMP_2D/Annotations/*.xml
+    BMP_2D/ImageSets/train.txt
+    MHD_3D/MHD_3D/*.mhd
 
 Usage:
-    python generate_toy_data.py --out ./toy_dataset --n_patients 5 --slices_per_patient 3
+  python sample_data/generate_sample_data.py --out ./sample_data/toy_dataset --n_pat 6
 """
-import os
-import argparse
+import os, sys, argparse, math, random
 import numpy as np
-from PIL import Image, ImageDraw
+import cv2
 import SimpleITK as sitk
-import csv
-import random
 import xml.etree.ElementTree as ET
 
-def make_dirs(root):
-    bmp_image_dir = os.path.join(root, "BMP_2D", "BMP_2D", "Image")
-    ann_dir = os.path.join(root, "BMP_2D", "BMP_2D", "Annotations")
-    imagesets_dir = os.path.join(root, "BMP_2D", "ImageSets")
-    mhd_dir = os.path.join(root, "MHD_3D", "MHD_3D")
-    os.makedirs(bmp_image_dir, exist_ok=True)
-    os.makedirs(ann_dir, exist_ok=True)
-    os.makedirs(imagesets_dir, exist_ok=True)
-    os.makedirs(mhd_dir, exist_ok=True)
-    return bmp_image_dir, ann_dir, imagesets_dir, mhd_dir
-
-def write_pascal_voc_xml(xml_path, filename, width, height, xmin, ymin, xmax, ymax, label="nodule"):
-    annotation = ET.Element("annotation")
-    ET.SubElement(annotation, "filename").text = filename
-    size = ET.SubElement(annotation, "size")
-    ET.SubElement(size, "width").text = str(width)
-    ET.SubElement(size, "height").text = str(height)
-    ET.SubElement(size, "depth").text = "1"
-
-    obj = ET.SubElement(annotation, "object")
-    ET.SubElement(obj, "name").text = label
+def write_xml_bbox(xml_path, stem, xmin, ymin, xmax, ymax):
+    root = ET.Element("annotation")
+    ET.SubElement(root, "filename").text = stem + ".bmp"
+    obj = ET.SubElement(root, "object")
+    ET.SubElement(obj, "name").text = "nodule"
     bnd = ET.SubElement(obj, "bndbox")
     ET.SubElement(bnd, "xmin").text = str(int(xmin))
     ET.SubElement(bnd, "ymin").text = str(int(ymin))
     ET.SubElement(bnd, "xmax").text = str(int(xmax))
     ET.SubElement(bnd, "ymax").text = str(int(ymax))
+    tree = ET.ElementTree(root)
+    tree.write(xml_path)
 
-    tree = ET.ElementTree(annotation)
-    tree.write(xml_path, encoding="utf-8", xml_declaration=True)
-
-def create_sphere_volume(Z=80, Y=128, X=128, center=None, radius=8, intensity=200):
-    vol = np.zeros((Z, Y, X), dtype=np.float32)
-    if center is None:
-        cz = random.randint(radius+2, Z-radius-3)
-        cy = random.randint(radius+2, Y-radius-3)
-        cx = random.randint(radius+2, X-radius-3)
-    else:
-        cz, cy, cx = center
-    zz, yy, xx = np.ogrid[:Z, :Y, :X]
-    mask = (zz - cz)**2 + (yy - cy)**2 + (xx - cx)**2 <= radius**2
-    vol[mask] = intensity
-    # add gaussian background and slight smoothing
-    vol = vol + np.random.randn(*vol.shape).astype(np.float32) * 5.0
-    vol = vol.astype(np.float32)
-    return vol, (cz, cy, cx)
-
-def save_mhd(volume, out_path, spacing=(1.0,1.0,1.0)):
+def make_volume(shape=(64, 128, 128), nodule_center=(32, 64, 64), nodule_r=6):
+    """Create simple CT-like volume:
+       - background gaussian noise
+       - two ellipses as lungs (lower intensity)
+       - bright spherical nodule at given center
     """
-    Save volume as .mhd + raw using SimpleITK.
-    volume: numpy array shape (Z, Y, X)
-    """
-    img = sitk.GetImageFromArray(volume)  # SimpleITK expects (z,y,x)
-    img.SetSpacing(spacing)
+    D, H, W = shape
+    vol = np.random.normal(loc=-800, scale=30, size=shape).astype(np.float32)  # CT-like HU around -800
+    # add lung ellipses per-slice (same mask for all z)
+    yy, xx = np.mgrid[0:H, 0:W]
+    left_center = (int(H*0.5), int(W*0.35))
+    right_center = (int(H*0.5), int(W*0.65))
+    left_mask = ((yy - left_center[0])**2 / ( (H*0.35)**2 ) + (xx - left_center[1])**2 / ((W*0.25)**2)) < 1.0
+    right_mask = ((yy - right_center[0])**2 / ( (H*0.35)**2 ) + (xx - right_center[1])**2 / ((W*0.25)**2)) < 1.0
+    lung_mask = (left_mask | right_mask)
+    for z in range(D):
+        # lungs have higher intensity than background (but still negative HU)
+        vol[z][lung_mask] = vol[z][lung_mask] + 200 + np.random.normal(0,10,size=lung_mask.sum())
+    # insert spherical nodule (bright)
+    cz, cy, cx = nodule_center
+    zz, yy, xx = np.mgrid[0:D, 0:H, 0:W]
+    sphere = (zz - cz)**2 + (yy - cy)**2 + (xx - cx)**2 <= (nodule_r**2)
+    vol[sphere] = 50 + np.random.normal(0,5,size=vol[sphere].shape)  # near soft-tissue HU
+    # simple smoothing to look a bit more organic
+    vol = cv2.GaussianBlur(vol, (1,1), 0) if hasattr(cv2, "GaussianBlur") else vol
+    return vol
+
+def save_mhd(volume, out_path):
+    img = sitk.GetImageFromArray(volume)  # SITK expects z,y,x
+    # set some metadata (spacing) to plausible CT values
+    img.SetSpacing((1.0, 0.7, 0.7))  # z, y, x spacing
     sitk.WriteImage(img, out_path)
 
-def save_bmp_slice(bmp_array, out_path):
-    # bmp_array expected as 2D numpy float (0..255 or arbitrary). We'll clip and convert uint8.
-    arr = np.clip(bmp_array, 0, 255).astype(np.uint8)
-    im = Image.fromarray(arr)
-    im.save(out_path, format="BMP")
+def save_bmp_slice(img_slice, out_path):
+    # img_slice: numpy 2D float (HU-like). We map to 0-255 for visualization
+    # simple window/level for CT-look: window [-1200, 400]
+    wmin, wmax = -1200.0, 400.0
+    v = np.clip((img_slice - wmin) / (wmax - wmin), 0.0, 1.0)
+    v = (v * 255.0).astype(np.uint8)
+    # ensure 3-channel
+    v3 = cv2.cvtColor(v, cv2.COLOR_GRAY2BGR)
+    cv2.imwrite(out_path, v3)
 
-def main(out_root, n_patients=5, slices_per_patient=3, seed=42):
-    random.seed(seed)
-    np.random.seed(seed)
+def generate_toy(out_root, n_patients=6, seed=42):
+    random.seed(seed); np.random.seed(seed)
+    # folders
+    bmp_img_dir = os.path.join(out_root, "BMP_2D", "BMP_2D", "Image")
+    bmp_ann_dir = os.path.join(out_root, "BMP_2D", "BMP_2D", "Annotations")
+    bmp_imagesets = os.path.join(out_root, "BMP_2D", "ImageSets")
+    mhd_dir = os.path.join(out_root, "MHD_3D", "MHD_3D")
+    os.makedirs(bmp_img_dir, exist_ok=True)
+    os.makedirs(bmp_ann_dir, exist_ok=True)
+    os.makedirs(bmp_imagesets, exist_ok=True)
+    os.makedirs(mhd_dir, exist_ok=True)
 
-    bmp_image_dir, ann_dir, imagesets_dir, mhd_dir = make_dirs(out_root)
     train_list = []
-
-    csv_rows = []  # for all_anno_3D.csv with columns: image,x_center,y_center,z_center
-
-    print(f"[INFO] Generating toy dataset at: {out_root}")
+    # for each patient: create 3D volume and several 2D annotated slices
     for pid in range(1, n_patients+1):
-        # make synthetic volume
-        Z, Y, X = 80, 128, 128
-        radius = random.randint(6, 12)
-        vol, (cz, cy, cx) = create_sphere_volume(Z=Z, Y=Y, X=X, radius=radius, intensity=180 + random.randint(-30,30))
+        # random volume dims (keep manageable)
+        D, H, W = 64, 128, 128
+        # pick nodule location inside lungs roughly
+        cz = random.randint(12, D-12)
+        cy = int(H * (0.4 + 0.2 * random.random()))  # y near center
+        cx = int(W * (0.35 + 0.3 * random.random()))
+        r = random.randint(4, 8)
+        vol = make_volume(shape=(D,H,W), nodule_center=(cz, cy, cx), nodule_r=r)
         mhd_name = f"{pid}.mhd"
         mhd_path = os.path.join(mhd_dir, mhd_name)
         save_mhd(vol, mhd_path)
-        print(f"  - Patient {pid}: saved volume {mhd_path} (nodule at z={cz}, y={cy}, x={cx}, r={radius})")
-
-        # create several slices around the center (z offsets)
-        z_offsets = list(range(cz - slices_per_patient//2, cz + (slices_per_patient+1)//2))
-        # clamp
-        z_offsets = [max(0, min(Z-1, z)) for z in z_offsets]
-        for z in z_offsets:
+        # create 1..3 annotated slices (vary z offset)
+        n_slices = random.choice([1,2,3])
+        for s in range(n_slices):
+            z = np.clip(cz + random.randint(-2,2), 0, D-1)
+            slice_img = vol[z]
+            # create bbox roughly around sphere projection
+            radius_px = int(round(r * (1.0 + 0.2*random.random())))
+            xmin = max(0, cx - radius_px - random.randint(0,3))
+            ymin = max(0, cy - radius_px - random.randint(0,3))
+            xmax = min(W-1, cx + radius_px + random.randint(0,3))
+            ymax = min(H-1, cy + radius_px + random.randint(0,3))
+            # stem format: '0001_13' where second num is slice index
             stem = f"{pid:04d}_{z}"
-            bmp_name = stem + ".bmp"
-            xml_name = stem + ".xml"
-            bmp_path = os.path.join(bmp_image_dir, bmp_name)
-            xml_path = os.path.join(ann_dir, xml_name)
-
-            # create slice image: use vol[z,:,:], add contrast and normalize to 0..255
-            slice_img = vol[z].copy()
-            # enhance contrast slightly
-            slice_img = (slice_img - slice_img.min())
-            if slice_img.max() > 0:
-                slice_img = slice_img / slice_img.max()
-            slice_img = (slice_img * 255.0).astype(np.uint8)
-
-            # create a bounding box around (cx,cy) projected to 2D with size approx 2*radius
-            box_half = int(radius * 1.8)
-            xmin = max(0, int(cx - box_half))
-            xmax = min(X-1, int(cx + box_half))
-            ymin = max(0, int(cy - box_half))
-            ymax = min(Y-1, int(cy + box_half))
-
-            # To make the image look more CT-like, draw a subtle circular blob on top (already sphere)
-            # Save bmp
+            bmp_path = os.path.join(bmp_img_dir, stem + ".bmp")
+            xml_path = os.path.join(bmp_ann_dir, stem + ".xml")
             save_bmp_slice(slice_img, bmp_path)
-
-            # Save xml
-            write_pascal_voc_xml(xml_path, bmp_name, width=X, height=Y, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax)
-
-            # add to CSV rows
-            csv_rows.append({
-                "image": bmp_name,
-                "x_center": int(cx),
-                "y_center": int(cy),
-                "z_center": int(z)
-            })
-
-            # include stem in train list (we'll use all created stems as train for toy)
+            write_xml_bbox(xml_path, stem, xmin, ymin, xmax, ymax)
             train_list.append(stem)
-
-    # write ImageSets/train.txt (unique stems)
-    train_txt_path = os.path.join(imagesets_dir, "train.txt")
-    with open(train_txt_path, "w") as f:
-        for s in sorted(set(train_list)):
+    # save train.txt
+    train_txt = os.path.join(bmp_imagesets, "train.txt")
+    with open(train_txt, "w") as f:
+        for s in train_list:
             f.write(s + "\n")
 
-    # write all_anno_3D.csv
-    csv_path = os.path.join(out_root, "all_anno_3D.csv")
-    with open(csv_path, "w", newline='') as cf:
-        writer = csv.DictWriter(cf, fieldnames=["image", "x_center", "y_center", "z_center"])
-        writer.writeheader()
-        for r in csv_rows:
-            writer.writerow(r)
-
-    print(f"[INFO] Wrote {len(csv_rows)} slice annotations to {csv_path}")
-    print(f"[INFO] Wrote train list to {train_txt_path}")
-    print(f"[INFO] Done. Dataset root: {out_root}")
+    # write a small csv that lists volumes (optional)
+    print(f"[INFO] Generated toy dataset at: {out_root}")
+    print(f"- Patients: {n_patients}; slices: {len(train_list)}")
+    return out_root
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser()
-    p.add_argument("--out", type=str, default="./toy_dataset", help="output dataset root")
-    p.add_argument("--n_patients", type=int, default=5, help="number of synthetic patients/volumes")
-    p.add_argument("--slices_per_patient", type=int, default=3, help="slices per patient to create")
-    p.add_argument("--seed", type=int, default=42)
-    args = p.parse_args()
-    main(args.out, n_patients=args.n_patients, slices_per_patient=args.slices_per_patient, seed=args.seed)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out", type=str, default="./sample_data/toy_dataset", help="output folder")
+    parser.add_argument("--n_pat", type=int, default=6, help="number of synthetic patients/volumes")
+    parser.add_argument("--seed", type=int, default=42)
+    args = parser.parse_args()
+    generate_toy(args.out, n_patients=args.n_pat, seed=args.seed)
